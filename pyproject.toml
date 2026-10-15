@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dbt-platform-tooling"
+version = "0.0.1"
+description = "Shared CLI tooling, pinned dbt/adapter versions, and pre-commit hook definitions for the dbt platform's dataset repos."
+requires-python = ">=3.12"
+dependencies = [
+    # Pinned HERE, not per-repo: every dataset repo installs an exact tag
+    # of this package so the whole fleet runs identical dbt/adapter
+    # versions instead of drifting independently.
+    #
+    # Check the dbt version compatibility across all adapters.
+    # Try to keep all dbt adapters in sync with the core version. X.Y.*.
+    # Duck DB typically lags slightly behind the latest Snowflake adapter.
+    #
+    # https://pypi.org/project/dbt-core/#history
+    # https://pypi.org/project/dbt-duckdb/#history
+    # https://pypi.org/project/dbt-snowflake/#history
+    #
+    "dbt-core==1.11.*",
+    "dbt-duckdb==1.11.*",
+    "dbt-snowflake==1.11.*",
+    "snowflake-connector-python",
+    "duckdb",
+    "typer",
+]
+
+[project.optional-dependencies]
+# Dev-only tooling, also pinned HERE rather than per-repo: a dataset
+# repo's requirements.txt installs `dbt-platform-tooling[dev]` and gets
+# this alongside the runtime deps above, instead of listing pre-commit/
+# sqlfluff separately and risking drift between repos.
+dev = [
+    "pre-commit",
+    "sqlfluff",
+    "sqlfluff-templater-dbt",
+    "dbt-coverage",
+]
+
+[project.scripts]
+
+[tool.setuptools.packages.find]
+where = ["src"]
