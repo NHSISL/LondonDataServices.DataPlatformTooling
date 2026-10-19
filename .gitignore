@@ -1,0 +1,22 @@
+# OS Ignored Files
+## Windows
+Thumbs.db
+Desktop.ini
+
+## macOS
+.DS_Store
+
+# Python Ignored Files
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+*.egg
+*.egg-info/
+build/
+dist/
+wheels/
+pip-wheel-metadata/

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "dbt-platform-tooling"
 version = "0.0.1"
 description = "Shared CLI tooling, pinned dbt/adapter versions, and pre-commit hook definitions for the dbt platform's dataset repos."
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     # Pinned HERE, not per-repo: every dataset repo installs an exact tag
     # of this package so the whole fleet runs identical dbt/adapter
@@ -26,21 +26,26 @@ dependencies = [
     "snowflake-connector-python",
     "duckdb",
     "typer",
+    "pre-commit",
+    "PyYAML",
 ]
 
 [project.optional-dependencies]
 # Dev-only tooling, also pinned HERE rather than per-repo: a dataset
 # repo's requirements.txt installs `dbt-platform-tooling[dev]` and gets
-# this alongside the runtime deps above, instead of listing pre-commit/
-# sqlfluff separately and risking drift between repos.
+# sqlfluff alongside the runtime deps above, avoiding drift between repos.
 dev = [
-    "pre-commit",
     "sqlfluff",
     "sqlfluff-templater-dbt",
     "dbt-coverage",
 ]
 
 [project.scripts]
+install-infisical = "dbt_platform_tooling.setup_tools:install_infisical_app"
+attach-precommit-hooks = "dbt_platform_tooling.setup_tools:attach_precommit_hooks_app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+dbt_platform_tooling = ["pre-commit-config.yaml"]
