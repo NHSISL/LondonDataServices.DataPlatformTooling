@@ -48,4 +48,4 @@ attach-precommit-hooks = "dbt_platform_tooling.setup_tools:attach_precommit_hook
 where = ["src"]
 
 [tool.setuptools.package-data]
-dbt_platform_tooling = ["pre-commit-config.yaml"]
+dbt_platform_tooling = ["pre-commit-config.yaml", ".infisical.toml"]

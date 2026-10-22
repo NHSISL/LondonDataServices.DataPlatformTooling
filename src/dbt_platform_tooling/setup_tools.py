@@ -30,7 +30,16 @@ def _merge_precommit_config(repository_path: Path, shared_config_path: Path) -> 
     if not isinstance(shared_config, dict) or not isinstance(shared_config.get("repos"), list):
         raise ValueError(f"Invalid shared pre-commit config: {shared_config_path}")
 
+    scan_config_path = shared_config_path.with_name(".infisical.toml").resolve(strict=True)
     for shared_repo in shared_config["repos"]:
+        if shared_repo.get("repo") == "local":
+            for shared_hook in shared_repo.get("hooks", []):
+                if shared_hook.get("id") == "infisical-scan":
+                    shared_hook["args"] = [
+                        *shared_hook.get("args", []),
+                        "--config",
+                        str(scan_config_path),
+                    ]
         matching_repo = next(
             (
                 repo
