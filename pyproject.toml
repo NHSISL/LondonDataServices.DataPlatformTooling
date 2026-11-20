@@ -28,6 +28,7 @@ dependencies = [
     "typer",
     "pre-commit",
     "PyYAML",
+    "ruamel.yaml>=0.18,<0.19",
 ]
 
 [project.optional-dependencies]
@@ -42,7 +43,10 @@ dev = [
 
 [project.scripts]
 install-infisical = "dbt_platform_tooling.setup_tools:install_infisical_app"
+update-infisical = "dbt_platform_tooling.setup_tools:update_infisical_app"
 attach-precommit-hooks = "dbt_platform_tooling.setup_tools:attach_precommit_hooks_app"
+generate-source-tables = "dbt_platform_tooling.generate_source_tables:main"
+sync-sources = "dbt_platform_tooling.sync_sources:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

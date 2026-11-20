@@ -20,3 +20,11 @@ build/
 dist/
 wheels/
 pip-wheel-metadata/
+
+# Other Ignored Files
+*.code-workspace.bak
+
+# dbt Ignored Files
+target/
+dbt_packages/
+logs/

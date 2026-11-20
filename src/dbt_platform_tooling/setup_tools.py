@@ -9,6 +9,7 @@ import yaml
 
 
 install_infisical_app = typer.Typer()
+update_infisical_app = typer.Typer()
 attach_precommit_hooks_app = typer.Typer()
 
 
@@ -125,6 +126,43 @@ def install_infisical() -> None:
         return
 
     typer.echo("Infisical installation completed.")
+
+
+@update_infisical_app.command()
+def update_infisical() -> None:
+    try:
+        if not shutil.which("infisical"):
+            typer.echo("Warning: Infisical is not installed. Run install-infisical first.")
+            return
+
+        operating_system = platform.system()
+        if operating_system == "Windows":
+            subprocess.run(
+                [
+                    "winget",
+                    "upgrade",
+                    "--id",
+                    "infisical.infisical",
+                    "--exact",
+                    "--accept-source-agreements",
+                    "--accept-package-agreements",
+                ],
+                check=True,
+            )
+        elif operating_system == "Linux":
+            subprocess.run(["sudo", "apt-get", "update"], check=True)
+            subprocess.run(
+                ["sudo", "apt-get", "install", "--only-upgrade", "-y", "infisical"],
+                check=True,
+            )
+        else:
+            typer.echo(f"Warning: Infisical updates are not supported on {operating_system}.")
+            return
+    except Exception as error:
+        typer.echo(f"Warning: Could not update Infisical: {error}")
+        return
+
+    typer.echo("Infisical update completed.")
 
 
 @attach_precommit_hooks_app.command()

@@ -1,0 +1,186 @@
+parameters:
+  - name: p_dbt_target
+    displayName: dbt target
+    type: string
+    default: dev
+    values:
+      - dev
+      - test
+      - release
+  - name: p_datamart_tag
+    displayName: dbt tag for this datamart (e.g., DATAMART1, DM_0001)
+    type: string
+  - name: p_datamart_repo_resource
+    displayName: Resource name for datamart repository (e.g., LDS_DataMarts)
+    type: string
+    default: LDS_DataMarts
+  - name: p_datamart_working_dir
+    displayName: Working directory for datamart (relative to checkout root)
+    type: string
+    default: DATAMARTS
+  - name: p_datamart_profiles_dir
+    displayName: Profiles directory for dbt
+    type: string
+    default: DATAMARTS/pipelines
+  - name: p_transform_data
+    displayName: Build dbt models for data mart transformation
+    type: boolean
+    default: true
+  - name: p_export_data
+    displayName: Create files into Azure storage
+    type: boolean
+    default: false
+  - name: p_export_stage
+    displayName: Azure storage stage path for export
+    type: string
+    default: ""
+  - name: p_export_schema
+    displayName: Schema containing data to export
+    type: string
+    default: ""
+  - name: p_export_format
+    displayName: Export file format (e.g., CSV_EXPORT, PARQUET_EXPORT)
+    type: string
+    default: "CSV_EXPORT"
+  - name: p_table_pattern
+    displayName: Pattern to filter tables for export (e.g., DataMart1_%)
+    type: string
+    default: ""
+  - name: p_timeout_minutes
+    displayName: Job timeout in minutes
+    type: number
+    default: 180
+
+variables:
+  vmImageName: 'ubuntu-latest'
+  keyVaultName: 'lds-preprod-sso-kv01'
+  keyVaultSubscription: 'LDS_Management-Group-ISL-LDS-PreProd'
+  toolingRepoCheckoutPath: 's/tooling'
+  datamartCheckoutPath: 's/datamart'
+
+stages:
+  - stage: Build
+    displayName: Build stage
+    jobs:
+      - job: Build
+        timeoutInMinutes: ${{ parameters.p_timeout_minutes }}
+        displayName: Deploy Data Mart
+        pool:
+          vmImage: $(vmImageName)
+
+        steps:
+          # Checkout tooling repo (source of template and dependencies)
+          - checkout: LDS_Tooling
+            clean: true
+            path: $(toolingRepoCheckoutPath)
+            fetchDepth: 1
+
+          # Checkout datamart repo (target repo running pipeline)
+          - checkout: ${{ parameters.p_datamart_repo_resource }}
+            clean: true
+            path: $(datamartCheckoutPath)
+            fetchDepth: 1
+
+          # Read Python version from tooling package
+          - script: |
+              PYTHON_VERSION=$(cat $(toolingRepoCheckoutPath)/PYTHON_VERSION)
+              echo "##vso[task.setvariable variable=pythonVersion]$PYTHON_VERSION"
+            displayName: Read Python version from tooling package
+            continueOnError: false
+
+          # Use specified Python version
+          - task: UsePythonVersion@0
+            displayName: 'Use Python $(pythonVersion)'
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          # Create virtual environment and install tooling package
+          - script: |
+              set -e
+
+              echo "Creating virtual environment..."
+              python -m venv venv
+
+              echo "Activating virtual environment..."
+              source venv/bin/activate
+
+              echo "Upgrading pip..."
+              python -m pip install --upgrade pip
+
+              echo "Installing dbt-platform-tooling package..."
+              cd $(toolingRepoCheckoutPath)
+              python -m pip install -e .
+              cd -
+
+              echo "Virtual environment ready with dbt and dependencies installed"
+            displayName: Setup virtual environment with dbt platform tooling
+            continueOnError: false
+
+          # Verify dbt installation
+          - script: |
+              source venv/bin/activate
+              dbt --version
+            displayName: Verify dbt installation
+            continueOnError: false
+
+          # Install datamart-specific dbt dependencies
+          - script: |
+              source venv/bin/activate
+              dbt deps --project-dir $(datamartCheckoutPath)/${{ parameters.p_datamart_working_dir }}
+            displayName: Install dbt dependencies for datamart
+            continueOnError: false
+
+          # Fetch secrets from Azure KeyVault
+          - task: AzureKeyVault@2
+            displayName: Fetch secrets from Key Vault
+            inputs:
+              azureSubscription: '$(keyVaultSubscription)'
+              KeyVaultName: '$(keyVaultName)'
+              SecretsFilter: 'SVC-DEV-ACCOUNT-PIPELINE-ACCOUNT, SVC-DEV-ACCOUNT-PIPELINE-USER, SVC-DEV-ACCOUNT-PIPELINE-PRIVATE-KEY, SVC-PID-ACCOUNT-PIPELINE-ACCOUNT, SVC-PID-ACCOUNT-PIPELINE-USER, SVC-PID-ACCOUNT-PIPELINE-PRIVATE-KEY'
+              RunAsPreJob: true
+
+          # Transform data
+          - script: |
+              source venv/bin/activate
+              dbt run \
+                -s tag:${{ parameters.p_datamart_tag }} \
+                --project-dir $(datamartCheckoutPath)/${{ parameters.p_datamart_working_dir }} \
+                --profiles-dir $(datamartCheckoutPath)/${{ parameters.p_datamart_profiles_dir }} \
+                -t ${{ parameters.p_dbt_target }}
+            displayName: Transform data mart models
+            condition: eq(${{ parameters.p_transform_data }}, true)
+            continueOnError: false
+            env:
+              SVC_DEV_ACCOUNT_PIPELINE_ACCOUNT: $(SVC-DEV-ACCOUNT-PIPELINE-ACCOUNT)
+              SVC_DEV_ACCOUNT_PIPELINE_USER: $(SVC-DEV-ACCOUNT-PIPELINE-USER)
+              SVC_DEV_ACCOUNT_PIPELINE_PRIVATE_KEY: $(SVC-DEV-ACCOUNT-PIPELINE-PRIVATE-KEY)
+              SVC_PID_ACCOUNT_PIPELINE_ACCOUNT: $(SVC-PID-ACCOUNT-PIPELINE-ACCOUNT)
+              SVC_PID_ACCOUNT_PIPELINE_USER: $(SVC-PID-ACCOUNT-PIPELINE-USER)
+              SVC_PID_ACCOUNT_PIPELINE_PRIVATE_KEY: $(SVC-PID-ACCOUNT-PIPELINE-PRIVATE-KEY)
+
+          # Export data to Azure storage
+          - script: |
+              source venv/bin/activate
+              dbt run-operation run_export_data_to_stage \
+                --args "{
+                  \"stage\": \"${{ parameters.p_export_stage }}\",
+                  \"schema\": \"${{ parameters.p_export_schema }}\",
+                  \"file_format\": \"${{ parameters.p_export_format }}\",
+                  \"batch\": true,
+                  \"subfolders\": false,
+                  \"table_pattern\": \"${{ parameters.p_table_pattern }}\",
+                  \"filename_date_precision\": \"standard\"
+                }" \
+                -t ${{ parameters.p_dbt_target }} \
+                --project-dir $(datamartCheckoutPath)/${{ parameters.p_datamart_working_dir }} \
+                --profiles-dir $(datamartCheckoutPath)/${{ parameters.p_datamart_profiles_dir }}
+            displayName: Export data to Azure storage
+            condition: eq(${{ parameters.p_export_data }}, true)
+            continueOnError: false
+            env:
+              SVC_DEV_ACCOUNT_PIPELINE_ACCOUNT: $(SVC-DEV-ACCOUNT-PIPELINE-ACCOUNT)
+              SVC_DEV_ACCOUNT_PIPELINE_USER: $(SVC-DEV-ACCOUNT-PIPELINE-USER)
+              SVC_DEV_ACCOUNT_PIPELINE_PRIVATE_KEY: $(SVC-DEV-ACCOUNT-PIPELINE-PRIVATE-KEY)
+              SVC_PID_ACCOUNT_PIPELINE_ACCOUNT: $(SVC-PID-ACCOUNT-PIPELINE-ACCOUNT)
+              SVC_PID_ACCOUNT_PIPELINE_USER: $(SVC-PID-ACCOUNT-PIPELINE-USER)
+              SVC_PID_ACCOUNT_PIPELINE_PRIVATE_KEY: $(SVC-PID-ACCOUNT-PIPELINE-PRIVATE-KEY)
